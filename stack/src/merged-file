@@ -1,0 +1,763 @@
+package com.utcn.demo.controller;
+
+import com.utcn.demo.model.Answer;
+import com.utcn.demo.service.AnswerService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/answers")
+public class AnswerController {
+
+    @Autowired
+    private AnswerService answerService;
+
+    @GetMapping("/getAll")
+    @ResponseBody
+    public List<com.utcn.demo.model.Answer> retrieveAllCourses(){
+        return this.answerService.retrieveAnswer();
+    }
+    
+    @PostMapping("/insertAnswer")
+    @ResponseBody
+    public com.utcn.demo.model.Answer insertAnswer(@RequestBody Answer answer){
+        return this.answerService.insertAnswer(answer);
+    }
+
+    @PutMapping("/updateAnswer")
+    @ResponseBody
+    public com.utcn.demo.model.Answer updateCourse(@RequestBody Answer answer){
+        return this.answerService.insertAnswer(answer);
+    }
+
+    @DeleteMapping("/deleteById")
+    @ResponseBody
+    public String deleteById(@RequestParam Long id){
+        return this.answerService.deleteById(id);
+    }
+}
+package com.utcn.demo.controller;
+
+import com.utcn.demo.model.Asker;
+import com.utcn.demo.service.AskerService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/asker")
+public class AskerController {
+
+    @Autowired
+    AskerService askerService;
+
+    @GetMapping("/getAll")
+    public List<Asker> getPerson(){
+        return askerService.retrievePersons();
+    }
+
+}
+package com.utcn.demo.controller;
+
+import com.utcn.demo.service.ExpertService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/experts")
+public class ExpertController {
+
+    @Autowired
+    private ExpertService expertService;
+
+    @GetMapping("/getAll")
+    @ResponseBody
+    public List<com.utcn.demo.model.Expert> getAllExperts() {
+        List<com.utcn.demo.model.Expert> experts = this.expertService.retrieveExperts();
+        return experts;
+    }
+
+    @GetMapping("/getById/{id}")
+    @ResponseBody
+    public com.utcn.demo.model.Expert getExpertById(@PathVariable Long id) {
+       com.utcn.demo.model.Expert expert = this.expertService.retrieveExpertById(id);
+        return expert;
+    }
+
+    @GetMapping("/getById")
+    @ResponseBody
+    public com.utcn.demo.model.Expert getExpertByIdVar2(@RequestParam("id") Long id) {
+        com.utcn.demo.model.Expert expert = this.expertService.retrieveExpertById(id);
+        return expert;
+    }
+
+    @PostMapping("/createExpert")
+    @ResponseBody
+    public com.utcn.demo.model.Expert createExpert(@RequestBody com.utcn.demo.model.Expert expert){
+        return  this.expertService.addExpert(expert);
+    }
+
+    @PutMapping("/updateExpert")
+    @ResponseBody
+    public com.utcn.demo.model.Expert updateExpert(@RequestBody com.utcn.demo.model.Expert expert){
+        return  this.expertService.addExpert(expert);
+    }
+
+    @DeleteMapping("/deleteById")
+    @ResponseBody
+    public String deleteExpertById(@RequestParam Long id){
+        return this.expertService.deleteExpertById(id);
+    }
+}
+package com.utcn.demo.controller;
+
+import com.utcn.demo.model.Question;
+import com.utcn.demo.service.QuestionService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/questions")
+public class QuestionController {
+
+    @Autowired
+    private QuestionService questionService;
+
+    @GetMapping("/getAll")
+    @ResponseBody
+    public List<Question> retrieveAllQuestions(){
+        return this.questionService.retrieveQuestion();
+    }
+    
+    @PostMapping("/createQuestion")
+    @ResponseBody
+    public Question createQuestion(@RequestBody Question question){
+        return this.questionService.insertQuestion(question);
+    }
+
+    @PutMapping("/updateQuestion")
+    @ResponseBody
+    public Question updateQuestion(@RequestBody Question question){
+        return this.questionService.insertQuestion(question);
+    }
+
+    @DeleteMapping("/deleteById")
+    @ResponseBody
+    public String deleteById(@RequestParam Long id){
+        return this.questionService.deleteById(id);
+    }
+}
+package com.utcn.demo;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class DemoApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(DemoApplication.class, args);
+	}
+
+}
+package com.utcn.demo.model;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name ="answers")
+public class Answer {
+
+    @Id
+    @Column(name="answer_id")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long answerId;
+
+    @Column(name="answer_name")
+    private String answerName;
+
+    @ManyToOne()
+    @JoinColumn(name = "expert_id")
+    private Expert expert;
+
+    public Answer(){
+
+    }
+
+    public Answer(Long answerId, String answerName, Expert expert) {
+        this.answerId = answerId;
+        this.answerName = answerName;
+        this.expert = expert;
+    }
+
+    public Long getAnswerId() {
+        return answerId;
+    }
+
+    public void setAnswerId(Long answerId) {
+        this.answerId = answerId;
+    }
+
+    public String getAnswerName() {
+        return answerName;
+    }
+
+    public void setAnswerName(String courseName) {
+        this.answerName = courseName;
+    }
+
+    public Expert getExpert() {
+        return expert;
+    }
+
+    public void setExpert(Expert expert) {
+        this.expert = expert;
+    }
+}
+package com.utcn.demo.model;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "askers")
+public class Asker {
+
+    @Id
+    @Column(name = "cnp")
+    private String cnp;
+
+    @Column(name = "name")
+    private String name;
+
+    public Asker(){};
+
+    public Asker(String cnp, String name){
+        this.cnp = cnp;
+        this.name = name;
+    }
+
+    public String getCnp() {
+        return cnp;
+    }
+
+    public void setCnp(String cnp) {
+        this.cnp = cnp;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+}
+package com.utcn.demo.model;
+
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name ="experts")
+public class Expert {
+
+    @Id
+    @Column(name="expert_id")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long expertId;
+
+    @Column(name = "last_name")
+    private String lastName;
+
+    @Column(name="first_name")
+    private String firstName;
+
+    public Expert(){
+
+    }
+
+    public Expert(Long expertId, String lastName, String firstName) {
+        this.expertId = expertId;
+        this.lastName = lastName;
+        this.firstName = firstName;
+    }
+
+    public Long getExpertId() {
+        return expertId;
+    }
+
+    public void setExpertId(Long expertId) {
+        this.expertId = expertId;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
+    }
+}
+package com.utcn.demo.model;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name ="questions")
+public class Question {
+
+    @Id
+    @Column(name="question_id")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long questionId;
+
+    @Column(name="question_name")
+    private String questionName;
+
+    @ManyToOne()
+    @JoinColumn(name = "expert_id")
+    private Expert expert;
+
+    public Question(){
+
+    }
+
+    public Question(Long questionId, String questionName, Expert expert) {
+        this.questionId = questionId;
+        this.questionName = questionName;
+        this.expert = expert;
+    }
+
+    public Long getCourseId() {
+        return questionId;
+    }
+
+    public void setCourseId(Long courseId) {
+        this.questionId = questionId;
+    }
+
+    public String getCourseName() {
+        return questionName;
+    }
+
+    public void setCourseName(String courseName) {
+        this.questionName = questionName;
+    }
+
+    public Expert getExpert() {
+        return expert;
+    }
+
+    public void setExpert(Expert expert) {
+        this.expert = expert;
+    }
+}
+package com.utcn.demo.repository;
+
+import org.springframework.data.repository.CrudRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface AnswerRepository extends CrudRepository<com.utcn.demo.model.Answer, Long> {
+}
+package com.utcn.demo.repository;
+
+import com.utcn.demo.model.Asker;
+import org.springframework.data.repository.CrudRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface AskerRepository
+        extends CrudRepository<Asker, String> {
+}
+package com.utcn.demo.repository;
+
+import org.springframework.data.repository.CrudRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface ExpertRepository extends CrudRepository<com.utcn.demo.model.Expert, Long> {
+}
+package com.utcn.demo.repository;
+
+import org.springframework.data.repository.CrudRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface QuestionRepository extends CrudRepository<com.utcn.demo.model.Question, Long> {
+}
+package com.utcn.demo.service;
+
+
+import com.utcn.demo.repository.AnswerRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class AnswerService {
+
+    @Autowired
+    private AnswerRepository answerRepository;
+
+    public List<com.utcn.demo.model.Answer> retrieveAnswer(){
+        return (List<com.utcn.demo.model.Answer>) this.answerRepository.findAll();
+    }
+
+    public com.utcn.demo.model.Answer insertAnswer(com.utcn.demo.model.Answer course) {
+        return this.answerRepository.save(course);
+    }
+
+    public String deleteById(Long id) {
+        try{
+            this.answerRepository.deleteById(id);
+            return "Deletion Successfully";
+        }catch (Exception e){
+            return "Failed to delete course with id " + id;
+        }
+    }
+}
+package com.utcn.demo.service;
+
+import com.utcn.demo.model.Asker;
+import com.utcn.demo.repository.AskerRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class AskerService {
+
+    @Autowired
+    private AskerRepository askerRepository;
+
+    public List<Asker> retrievePersons(){
+        return (List<Asker>) askerRepository.findAll();
+    }
+}
+package com.utcn.demo.service;
+
+import com.utcn.demo.repository.ExpertRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class ExpertService {
+    @Autowired
+    private ExpertRepository expertRepository;
+
+    public List<com.utcn.demo.model.Expert> retrieveExperts(){
+        return (List<com.utcn.demo.model.Expert>) this.expertRepository.findAll();
+    }
+
+    public com.utcn.demo.model.Expert retrieveExpertById(Long id){
+
+        Optional<com.utcn.demo.model.Expert> expert=this.expertRepository.findById(id);
+        if(expert.isPresent()){
+            return expert.get();
+        }else{
+            return null;
+        }
+
+    }
+
+    public com.utcn.demo.model.Expert addExpert(com.utcn.demo.model.Expert expert){
+        return this.expertRepository.save(expert);
+    }
+
+    public String deleteExpertById(Long id){
+        try{
+            this.expertRepository.deleteById(id);
+            return "Entry successfully deleted!";
+        }catch (Exception e){
+            return "Failed to delete entry with id:" + id;
+        }
+    }
+
+}
+package com.utcn.demo.service;
+
+
+import com.utcn.demo.repository.QuestionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class QuestionService {
+
+    @Autowired
+    private QuestionRepository questionRepository;
+
+    public List<com.utcn.demo.model.Question> retrieveQuestion(){
+        return (List<com.utcn.demo.model.Question>) this.questionRepository.findAll();
+    }
+
+    public com.utcn.demo.model.Question insertQuestion(com.utcn.demo.model.Question question) {
+        return this.questionRepository.save(question);
+    }
+
+    public String deleteById(Long id) {
+        try{
+            this.questionRepository.deleteById(id);
+            return "Deletion Successfully";
+        }catch (Exception e){
+            return "Failed to delete course with id " + id;
+        }
+    }
+}
+spring.application.name=demo
+
+spring.datasource.url=jdbc:mysql://localhost:3306/lab31
+spring.datasource.username=root
+spring.datasource.password=Mysql227&
+package com.utcn.demo.controller;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.utcn.demo.model.Answer;
+import com.utcn.demo.service.AnswerService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
+
+import java.util.Arrays;
+import java.util.List;
+
+import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@RunWith(SpringRunner.class)
+@WebMvcTest(AnswerController.class)
+public class AnswerControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private WebApplicationContext context;
+
+    @MockBean
+    private AnswerService answerService;
+
+    @BeforeEach
+    public void setUp() {
+        mockMvc = MockMvcBuilders
+                .webAppContextSetup(context)
+                .apply(springSecurity())
+                .build();
+    }
+
+    @Test
+    @WithMockUser
+    void testRetrieveAllCourses() throws Exception {
+        Answer answer1 = new Answer(1L, "Answer 1", null); // Assuming 'null' is acceptable for the Expert reference
+        Answer answer2 = new Answer(2L, "Answer 2", null);
+        List<Answer> answers = Arrays.asList(answer1, answer2);
+
+        when(answerService.retrieveAnswer()).thenReturn(answers);
+
+        mockMvc.perform(get("/answers/getAll")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().json(new ObjectMapper().writeValueAsString(answers)));
+    }
+}
+package com.utcn.demo.controller;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.utcn.demo.model.Expert;
+import com.utcn.demo.service.ExpertService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+
+import org.springframework.web.context.WebApplicationContext;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@RunWith(SpringRunner.class)
+@WebMvcTest(ExpertController.class)
+public class ExpertControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private WebApplicationContext context;
+
+    @MockBean
+    private ExpertService expertService;
+
+    @BeforeEach
+    public void setUp() {
+        mockMvc = MockMvcBuilders
+                .webAppContextSetup(context)
+                .apply(springSecurity())
+                .build();
+    }
+
+    @Test
+    @WithMockUser
+    void testGetAllExperts() throws Exception {
+        Expert expert1 = new Expert(1L, "Doe", "John");
+        Expert expert2 = new Expert(2L, "Smith", "Anna");
+        List<Expert> experts = Arrays.asList(expert1, expert2);
+
+        when(expertService.retrieveExperts()).thenReturn(experts);
+
+        mockMvc.perform(get("/experts/getAll")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().json(new ObjectMapper().writeValueAsString(experts)));
+    }
+
+    @Test
+    @WithMockUser
+    void testGetExpertById() throws Exception {
+        Long expertId = 1L;
+        Expert expert = new Expert(expertId, "Doe", "John");
+
+        when(expertService.retrieveExpertById(expertId)).thenReturn(expert);
+
+        mockMvc.perform(get("/experts/getById/{id}", expertId)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().json(new ObjectMapper().writeValueAsString(expert)));
+    }
+
+    @Test
+    @WithMockUser
+    void testCreateExpert() throws Exception {
+        Expert expert = new Expert(null, "New", "Expert");
+        Expert savedExpert = new Expert(1L, "New", "Expert");
+
+        when(expertService.addExpert(any(Expert.class))).thenReturn(savedExpert);
+
+        mockMvc.perform(post("/experts/createExpert")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(expert)))
+                .andExpect(status().isOk())
+                .andExpect(content().json(new ObjectMapper().writeValueAsString(savedExpert)));
+    }
+
+    @Test
+    @WithMockUser
+    void testDeleteExpertById() throws Exception {
+        Long expertId = 1L;
+        String successMessage = "Expert deleted successfully";
+
+        when(expertService.deleteExpertById(expertId)).thenReturn(successMessage);
+
+        mockMvc.perform(delete("/experts/deleteById")
+                        .param("id", expertId.toString())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().string(successMessage));
+    }
+}
+package com.utcn.demo;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class DemoApplicationTests {
+
+	@Test
+	void contextLoads() {
+	}
+
+}
+package com.utcn.demo.repository;
+
+import com.utcn.demo.model.Answer;
+import com.utcn.demo.model.Expert;
+import org.junit.jupiter.api.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.test.context.junit4.SpringRunner;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@RunWith(SpringRunner.class)
+@DataJpaTest
+public class AnswerRepositoryTest {
+
+    @Autowired
+    private TestEntityManager entityManager;
+
+    @Autowired
+    private AnswerRepository answerRepository;
+
+    @Test
+    void whenFindById_thenReturnAnswer() {
+        Expert expert = new Expert(); // Assuming a no-arg constructor, set properties as needed
+        entityManager.persistAndFlush(expert); // Persisting expert because Answer has a relationship with Expert
+
+        Answer answer = new Answer();
+        answer.setAnswerName("Sample Answer");
+        answer.setExpert(expert); // Assuming an Answer references an Expert
+        entityManager.persistAndFlush(answer);
+
+
+        Answer found = answerRepository.findById(answer.getAnswerId()).orElse(null);
+
+
+        assertThat(found).isNotNull();
+        assertThat(found.getAnswerName()).isEqualTo(answer.getAnswerName());
+        assertThat(found.getExpert()).isEqualToComparingFieldByField(expert);
+    }
+}
