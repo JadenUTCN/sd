@@ -1,0 +1,79 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sidebar Navigation</title>
+    <style>
+        /* Body and overall layout */
+        body {
+            font-family: 'Arial', sans-serif; /* Ensuring a clean, readable font is used */
+            margin: 0; /* Remove default margin */
+            padding: 0; /* Remove default padding */
+            display: flex; /* Using flexbox to layout sidebar and content */
+        }
+
+        /* Sidebar specific styles */
+        .left-sidebar {
+            position: fixed; /* Fixed position to keep sidebar in place */
+            top: 0; /* Align to the top */
+            left: 0; /* Align to the left */
+            width: 200px; /* Sidebar width */
+            height: 100vh; /* Full viewport height */
+            background-color: #f4f4f4; /* Light grey background */
+            padding-top: 50px; /* Padding from the top */
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1); /* Subtle shadow on the right */
+        }
+
+        /* Styling for navigation links */
+        .nav-links {
+            list-style: none; /* Remove list bullets */
+            padding: 0; /* Remove default padding */
+        }
+
+        .nav-item {
+            margin: 0; /* Remove default margin */
+        }
+
+        .nav-link {
+            display: block; /* Make links fill the li element */
+            text-decoration: none; /* No underline on links */
+            color: #333; /* Dark grey color for text */
+            padding: 10px 20px; /* Padding for larger clickable area */
+            font-weight: bold; /* Bold font for better visibility */
+            transition: background-color 0.3s; /* Smooth transition for hover effect */
+        }
+
+        .nav-item.active .nav-link,
+        .nav-link:hover {
+            background-color: #ddd; /* Light grey background on hover/active */
+        }
+
+        /* Content area */
+        .content {
+            flex-grow: 1; /* Takes up the remaining space */
+            padding: 20px; /* Padding around the content */
+            margin-left: 200px; /* Margin to compensate for the sidebar */
+        }
+    </style>
+</head>
+<body>
+    <div th:fragment="sidebar" class="left-sidebar">
+        <ul class="nav-links">
+            <li class="nav-item" th:classappend="${module == 'index' ? 'active' : ''}">
+                <a href="/" class="nav-link">Home</a>
+            </li>
+            <li class="nav-item" th:classappend="${module == 'questions' ? 'active' : ''}">
+                <a href="/questions" class="nav-link">Questions</a>
+            </li>
+            <li class="nav-item" th:classappend="${module == 'accounts' ? 'active' : ''}">
+                <a href="/accounts" class="nav-link">Users</a>
+            </li>
+
+        </ul>
+    </div>
+    <div class="content">
+        <h1>Welcome to the main content area</h1>
+        <p>Here's where the rest of your page content will live.</p>
+    </div>
+</body>
+</html>
