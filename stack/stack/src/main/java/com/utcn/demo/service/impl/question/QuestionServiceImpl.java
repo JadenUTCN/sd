@@ -24,7 +24,7 @@ public class QuestionServiceImpl implements QuestionService {
     @Override
     @Transactional(readOnly = true)
     public Page<Question> findAll(Pageable pageable) {
-        return questionRepository.findAll(pageable);
+        return questionRepository.findAllSortByMostVotes(pageable);
     }
 
     @Override

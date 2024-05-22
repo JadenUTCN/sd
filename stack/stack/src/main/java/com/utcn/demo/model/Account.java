@@ -42,6 +42,10 @@ public class Account {
     @JoinColumn(name = "avatar_id")
     private Image avatar;
 
+//    @OneToOne(cascade = CascadeType.ALL)
+//    @JoinColumn(name = "score")
+    private float score;
+
     @ElementCollection(targetClass = Role.class, fetch = FetchType.EAGER)
     @CollectionTable(name = "account_role", joinColumns = @JoinColumn(name = "account_id"),
             uniqueConstraints = @UniqueConstraint(columnNames = {"account_id", "roles"}))
@@ -65,6 +69,12 @@ public class Account {
         roles.add(role);
     }
 
+    public void addScore(){
+        this.score +=2.5;
+    }
+    public void subScore(){
+        this.score -=1.5;
+    }
     public void removeRole(Role role) {
         roles.remove(role);
     }

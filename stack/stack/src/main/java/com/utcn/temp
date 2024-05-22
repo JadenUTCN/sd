@@ -1,0 +1,1565 @@
+package com.utcn.demo.audit;
+
+@Getter
+@Setter
+@MappedSuperclass
+@EntityListeners(AuditingEntityListener.class)
+public abstract class Auditable<U> {
+
+    @ManyToOne
+    @CreatedBy
+    @JoinColumn(name = "created_by")
+    protected U createdBy;
+
+    @CreatedDate
+    @Column(name = "created_date", nullable = false, updatable = false)
+    @Convert(converter = LocalDateTimeConverter.class)
+    protected LocalDateTime createdDate;
+
+    @ManyToOne
+    @LastModifiedBy
+    @JoinColumn(name = "last_modified_by")
+    protected U lastModifiedBy;
+
+    @LastModifiedDate
+    @Column(name = "last_modified_date")
+    @Convert(converter = LocalDateTimeConverter.class)
+    protected LocalDateTime lastModifiedDate;
+
+    protected String getFormattedDate(LocalDateTime timestamp, String pattern) {
+        final DateTimeFormatter formatter = DateTimeFormatter.ofPattern(pattern);
+        return timestamp.format(formatter);
+    }
+
+}
+package com.utcn.demo.audit;
+
+@Component
+public class AuditorAwareImpl implements AuditorAware<Account> {
+
+    @Autowired
+    private AccountService accountService;
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Optional<Account> getCurrentAuditor() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (Objects.isNull(auth) || !auth.isAuthenticated()) {
+            return Optional.empty();
+        }
+        String userEmail = ((UserDetails) auth.getPrincipal()).getUsername();
+        return accountService.findByEmail(userEmail);
+    }
+}
+package com.utcn.demo.config;
+import java.util.Locale;
+@Configuration
+public class LocaleConfig implements WebMvcConfigurer {
+
+    @Bean
+    public LocaleResolver localeResolver() {
+        SessionLocaleResolver slr = new SessionLocaleResolver();
+        slr.setDefaultLocale(Locale.forLanguageTag("ru"));
+        return slr;
+    }
+    @Bean
+    public LocaleChangeInterceptor localeChangeInterceptor() {
+        LocaleChangeInterceptor lci = new LocaleChangeInterceptor();
+        lci.setParamName("lang");
+        return  lci;
+    }
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(localeChangeInterceptor());
+    }
+}
+package com.utcn.demo.config;
+@Configuration
+public class WebConfig {
+    @Bean
+    public Function<String, String> currentUrlWithoutParam() {
+        return param -> ServletUriComponentsBuilder.fromCurrentRequest().replaceQueryParam(param).toUriString();
+    }
+}
+package com.utcn.demo.config;
+import static com.utcn.demo.controller.ControllerConstants.*;
+@Configuration
+@EnableWebSecurity
+@EnableJpaAuditing(auditorAwareRef = "auditorAware")
+@EnableGlobalMethodSecurity(securedEnabled = true, prePostEnabled = true)
+public class WebSecurityConfig  {
+    @Bean
+    public BCryptPasswordEncoder bCryptPasswordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+    @Bean
+    public AuditorAware<Account> auditorAware() {
+        return new AuditorAwareImpl();
+    }
+@Bean
+public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                .requestMatchers(LOGIN_PATH, REGISTRATION_PATH).permitAll()
+                .anyRequest().authenticated()
+                .and()
+                .formLogin()
+                .loginPage("/login")
+                .usernameParameter("email")
+                .defaultSuccessUrl("/", true)
+                .and()
+                .logout()
+                .logoutSuccessUrl("/login")
+                .permitAll();
+    return http.build();
+    }
+    public void configure(WebSecurity web) {
+        web
+            .ignoring()
+            .requestMatchers(
+                "/resources/**",
+                "/public/**");
+    }
+}
+package com.utcn.demo.controller;
+import com.google.common.base.CaseFormat;
+import lombok.AllArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import com.utcn.demo.controller.exception.AccountNotFoundException;
+import com.utcn.demo.model.Account;
+import com.utcn.demo.service.*;
+import java.io.IOException;
+import java.util.Base64;
+import java.util.List;
+import java.util.Optional;
+import static com.utcn.demo.controller.ControllerConstants.ACCOUNTS_PATH;
+@Controller
+@RequestMapping(ACCOUNTS_PATH)
+@AllArgsConstructor
+public class AccountController {
+    private static final String TEMPLATE_DIR = "account";
+    private static final String PROFILE_TEMPLATE = TEMPLATE_DIR + "/profile";
+    private static final String LIST_TEMPLATE = TEMPLATE_DIR + "/list";
+    private static final String EDIT_TEMPLATE = TEMPLATE_DIR + "/edit";
+    private static final String ACTIVITY_TEMPLATE = TEMPLATE_DIR + "/activity";
+    private final AccountService accountService;
+    private final ImageService imageService;
+    @ModelAttribute("module")
+    public String module() {
+        return "accounts";
+    }
+    @GetMapping
+    public String findAll(Model model, @PageableDefault(size = 20) Pageable pageable) {
+        model.addAttribute("accounts", accountService.findAll(pageable));
+        return TEMPLATE_DIR + "/list";
+    }
+    @GetMapping("/{id}")
+    public String viewAccount(@PathVariable Long id, Model model) {
+        Account account = accountService.findById(id).orElseThrow(() -> new AccountNotFoundException(id));
+        model.addAttribute("account", account);
+        model.addAttribute("profile", "view");
+        return PROFILE_TEMPLATE;
+    }
+    @GetMapping("/activity/{id}")
+    public String profileActivity(@PathVariable Long id, Model model) {
+        Account account = accountService.findById(id).orElseThrow(() -> new AccountNotFoundException(id));
+        model.addAttribute("profile", "activity");
+        model.addAttribute("account", account);
+        return ACTIVITY_TEMPLATE;
+    }
+    @PutMapping
+    public String updateAccount(@ModelAttribute Account account, @RequestParam("file") MultipartFile file) {
+        if (!file.isEmpty()) {
+            imageService.findById(account.getAvatar().getId())
+                .ifPresent(image -> {
+                    try {
+                        image.setData(Base64.getEncoder().encodeToString(file.getBytes()));
+                        imageService.save(image);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                });
+        }
+        accountService.save(account);
+        return String.format("redirect:%s/%d", ACCOUNTS_PATH, account.getId());
+    }
+    @GetMapping("/edit/{id}")
+    public String getEditAccountForm(@PathVariable Long id, Model model) {
+        model.addAttribute("profile", "edit");
+
+        Account account = accountService
+                .findById(id)
+                .orElseThrow(() -> new AccountNotFoundException(id));
+
+        model.addAttribute("account", account);
+        return EDIT_TEMPLATE;
+    }
+
+    @PostMapping("/new")
+    public String createAccount() {
+        return "/account/list";
+    }
+
+    @DeleteMapping("/{id}")
+    public String deleteAccount(@PathVariable Long id) {
+        accountService.deleteById(id);
+        return String.format("redirect:%s", ACCOUNTS_PATH);
+    }
+
+}
+package com.utcn.demo.controller;
+@Controller
+@RequestMapping(ANSWERS_PATH)
+@AllArgsConstructor
+public class AnswerController {
+
+    private static final String TEMPLATE_DIR = "answer";
+    private static final String LIST_TEMPLATE = TEMPLATE_DIR + "/list";
+    private static final String EDIT_TEMPLATE = TEMPLATE_DIR + "/edit";
+    @Qualifier("questionServiceImpl")
+    private final QuestionService questionService;
+    private final AnswerService answerService;
+    private final AccountService accountService;
+    @GetMapping
+    public String findAll(Model model) {
+        List<Answer> answers = answerService.findAll();
+
+        model.addAttribute("answers", answers);
+
+        return LIST_TEMPLATE;
+    }
+    @PostMapping
+    public String createAnswer(@Valid @ModelAttribute Answer answer,
+                               Principal principal) {
+
+        String userEmail = principal.getName();
+        Account author = accountService.findByEmail(userEmail)
+                .orElseThrow(() -> new AccountNotFoundException(userEmail));
+
+        Long id = answer.getQuestion().getId();
+
+        Question question = questionService.findById(id)
+                .orElseThrow(() -> new AccountNotFoundException(id));
+
+        answer.setAuthor(author);
+        answer.setQuestion(question);
+        answerService.save(answer);
+
+        return String.format("redirect:%s/%d", QUESTIONS_PATH, id);
+    }
+    @PatchMapping(value = "/{id}/like", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public Map voteUp(@PathVariable Long id, Principal principal) {
+        String userEmail = principal.getName();
+        Account author = accountService.findByEmail(userEmail).orElseThrow(() -> new AccountNotFoundException(userEmail));
+        Answer answer = answerService.findById(id).orElseThrow(() -> new AccountNotFoundException(id));
+        answer.removeNegativeVote(author);
+        answer.addPositiveVote(author);
+        answerService.save(answer);
+        Integer rating = answer.getRating();
+        return Collections.singletonMap("rating", rating);
+    }
+    @PatchMapping(value = "/{id}/dislike", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public Map voteDown(@PathVariable Long id, Principal principal) {
+        String userEmail = principal.getName();
+        Account author = accountService.findByEmail(userEmail).orElseThrow(() -> new AccountNotFoundException(userEmail));
+        Answer answer = answerService.findById(id).orElseThrow(() -> new AccountNotFoundException(id));
+        answer.removePositiveVote(author);
+        answer.addNegativeVote(author);
+        answerService.save(answer);
+        Integer rating = answer.getRating();
+        return Collections.singletonMap("rating", rating);
+    }
+
+    @GetMapping("/edit/{id}")
+    public String getEditAnswerForm(@PathVariable Long id, Model model) {
+        Answer answer = answerService.findById(id)
+                .orElseThrow(() -> new AccountNotFoundException(id));
+
+        model.addAttribute("answer", answer);
+
+        return EDIT_TEMPLATE;
+    }
+
+    @PutMapping
+    public String editAnswer(@Valid @ModelAttribute Answer answer) {
+        answerService.save(answer);
+
+        return String.format("redirect:%s/%d", QUESTIONS_PATH, answer.getQuestion().getId());
+    }
+
+
+}
+package com.utcn.demo.controller;
+@RestController
+@RequestMapping("/asker")
+public class AskerController {
+
+    @Autowired
+    AskerService askerService;
+
+    @GetMapping("/getAll")
+    public List<Asker> getPerson(){
+        return askerService.retrievePersons();
+    }
+
+}
+package com.utcn.demo.controller;
+public class ControllerConstants {
+    public static final String TEST_HOST = "http://localhost";
+    public static final String REGISTRATION_PATH = "/registration";
+    public static final String LOGIN_PATH = "/login";
+    public static final String ACCOUNTS_PATH = "/accounts";
+    public static final String QUESTIONS_PATH = "/questions";
+    public static final String ANSWERS_PATH = "/answers";
+    public static final String ERROR_PAGE = "/404";
+    public static final String ACCESS_DENIED_PAGE = "/403";
+}
+package com.utcn.demo.controller.exception;
+public class AccountNotFoundException extends RuntimeException {
+    private static final String ACCOUNT_ID_NOT_FOUND = "Account with id %d not found";
+    private static final String ACCOUNT_EMAIL_NOT_FOUND = "Account with email %s not found";
+    private String message;
+    public AccountNotFoundException(Long id) {
+        super(String.format(ACCOUNT_ID_NOT_FOUND, id));
+        this.message = String.format(ACCOUNT_ID_NOT_FOUND, id);
+    }
+    public AccountNotFoundException(String email) {
+        super(String.format(ACCOUNT_EMAIL_NOT_FOUND, email));
+        this.message = String.format(ACCOUNT_EMAIL_NOT_FOUND, email);
+    }
+    @Override
+    public String getMessage() {
+        return message;
+    }
+}
+package com.utcn.demo.controller;
+@Controller
+@RequestMapping("/")
+@AllArgsConstructor
+public class HomeController {
+
+    @Qualifier("questionService")
+    private final QuestionService questionService;
+    @ModelAttribute("module")
+    public String module() {
+        return "index";
+    }
+    @GetMapping
+    public String index(Model model) {
+        List<Question> questions = questionService.findAll();
+
+        model.addAttribute("questions", questions);
+
+        return "index";
+    }
+}
+package com.utcn.demo.controller;
+@Controller
+@RequestMapping(LOGIN_PATH)
+@AllArgsConstructor
+public class LoginController {
+
+    private final MessageSource messageSource;
+
+    @GetMapping
+    public String loginPage() {
+        return "login";
+    }
+
+    @ModelAttribute
+    public void showError(Model model, String error, Locale locale) {
+        if (error != null) {
+            String errorMessage = messageSource.getMessage("error.login", null, locale);
+            model.addAttribute("error", errorMessage);
+        }
+    }
+
+}
+package com.utcn.demo.controller;
+@Controller
+@RequestMapping(QUESTIONS_PATH)
+@AllArgsConstructor
+public class QuestionController {
+
+    private static final String TEMPLATE_DIR = "question";
+    private static final String NEW_TEMPLATE = TEMPLATE_DIR + "/new";
+    private static final String LIST_TEMPLATE = TEMPLATE_DIR + "/list";
+    private static final String EDIT_TEMPLATE = TEMPLATE_DIR + "/edit";
+    private static final String VIEW_TEMPLATE = TEMPLATE_DIR + "/view";
+
+    private final QuestionService questionService;
+    private final AccountService accountService;
+    private final List<QuestionSortService> questionSortServices;
+
+
+
+    @ModelAttribute("module")
+    public String module() {
+        return "questions";
+    }
+
+    @GetMapping
+    public String findAll(Model model,
+                          @RequestParam(value = "filters", required = false) String filters,
+                          @PageableDefault(sort = {"id"}, direction = Sort.Direction.DESC, size = 5) Pageable pageable) {
+
+        if (!Objects.isNull(filters)) {
+            List<String> filtersList = List.of(filters.split(","));
+        }
+
+        Optional<QuestionSortType> sortType = pageable
+            .getSort()
+            .get()
+            .map(Sort.Order::getProperty)
+            .map(type -> CaseFormat.UPPER_CAMEL.to(CaseFormat.UPPER_UNDERSCORE, type))
+            .map(QuestionSortType::valueOf)
+            .findFirst();
+
+        sortType.flatMap(questionSortType -> questionSortServices
+                .stream()
+                .filter(service -> service.isSuitableFor(questionSortType))
+                .findFirst()).ifPresent(service -> model.addAttribute("questions", service.sort(pageable)));
+
+        return LIST_TEMPLATE;
+    }
+    @GetMapping("/new")
+    public String askQuestion(Model model) {
+        model.addAttribute("question", new Question());
+
+        return NEW_TEMPLATE;
+    }
+    @PostMapping
+    public String saveQuestion(@Valid @ModelAttribute Question question, Principal principal) {
+        String userEmail = principal.getName();
+        Account author = accountService
+                .findByEmail(userEmail)
+                .orElseThrow(() -> new RuntimeException("User with this email not found: " + userEmail));
+
+        question.setAuthor(author);
+        questionService.save(question);
+
+        return "redirect:questions";
+    }
+    @GetMapping("/{id}")
+    public String findById(@PathVariable Long id, Model model, Principal principal) {
+        Question question = questionService
+                .findById(id)
+                .orElseThrow(() -> new AccountNotFoundException(id));
+
+        Answer answer = new Answer();
+        answer.setQuestion(question);
+        model.addAttribute("question", question);
+        model.addAttribute("answer", answer);
+
+        return VIEW_TEMPLATE;
+    }
+    @PatchMapping(value = "/{id}/like", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public Map voteUp(@PathVariable Long id, Principal principal) {
+        String userEmail = principal.getName();
+        Account author = accountService.findByEmail(userEmail).orElseThrow(() -> new AccountNotFoundException(userEmail));
+        Question question = questionService.findById(id).orElseThrow(() -> new AccountNotFoundException(id));
+        question.removeNegativeVote(author);
+        question.addPositiveVote(author);
+        questionService.save(question);
+        Integer rating = question.getRating();
+        return Collections.singletonMap("rating", rating);
+    }
+
+    @PatchMapping(value = "/{id}/dislike", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public Map voteDown(@PathVariable Long id, Principal principal) {
+        String userEmail = principal.getName();
+        Account author = accountService.findByEmail(userEmail).orElseThrow(() -> new AccountNotFoundException(userEmail));
+        Question question = questionService.findById(id).orElseThrow(() -> new AccountNotFoundException(id));
+        question.removePositiveVote(author);
+        question.addNegativeVote(author);
+        questionService.save(question);
+        Integer rating = question.getRating();
+        return Collections.singletonMap("rating", rating);
+    }
+    @GetMapping("/edit/{id}")
+    public String getEditForm(@PathVariable Long id, Model model) {
+        Question question = questionService.findById(id).orElseThrow(() -> new AccountNotFoundException(id));
+
+        model.addAttribute("question", question);
+
+        return EDIT_TEMPLATE;
+    }
+    @PutMapping
+    public String editQuestion(@Valid @ModelAttribute Question question) {
+        Long updatedQuestionId = questionService
+                .save(question)
+                .getId();
+
+        return String.format("redirect:%s/%d", QUESTIONS_PATH, updatedQuestionId);
+    }
+    @DeleteMapping("/{id}")
+    public String deleteQuestion(@PathVariable Long id) {
+        questionService.deleteById(id);
+        return "redirect:/questions";
+    }
+}
+package com.utcn.demo.controller;
+@Controller
+@AllArgsConstructor
+@RequestMapping(REGISTRATION_PATH)
+public class RegistrationController {
+
+    private final AccountService accountService;
+    private final AccountMapper accountMapper;
+    private final AccountPostDtoValidator accountPostDtoValidator;
+    private final MessageSource messageSource;
+
+    @ModelAttribute("module")
+    String module() {
+        return "registration";
+    }
+    @GetMapping
+    public String registration(AccountPostDto accountPostDto) {
+        return "registration";
+    }
+    @PostMapping
+    public String registration(@Validated @ModelAttribute("accountPostDto") AccountPostDto accountPostDto,
+                               BindingResult bindingResult,
+                               Model model,
+                               Locale locale) {
+
+        accountPostDtoValidator.validate(accountPostDto, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            return "registration";
+        }
+
+        Optional<Account> account = accountService.findByEmail(accountPostDto.getEmail());
+
+        if (account.isPresent()) {
+            String errorMessage = messageSource.getMessage("error.registration.user.exist", null, locale);
+            model.addAttribute("error", errorMessage);
+            return "registration";
+        }
+
+        accountService.save(accountMapper.postDtoToAccount(accountPostDto));
+
+        return "redirect:login";
+    }
+}
+package com.utcn.demo.controller.validator;
+@Component
+public class AccountPostDtoValidator implements Validator {
+
+    @Override
+    public boolean supports(Class<?> aClass) {
+        return AccountPostDto.class.equals(aClass);
+    }
+
+    @Override
+    public void validate(Object o, Errors errors) {
+        AccountPostDto accountPostDto = (AccountPostDto) o;
+
+        if (!accountPostDto.getPasswordConfirm().equals(accountPostDto.getPassword())) {
+            errors.rejectValue("passwordConfirm", "error.validation.password.confirmation");
+        }
+
+    }
+}
+package com.utcn.demo;
+@SpringBootApplication
+public class DemoApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(DemoApplication.class, args);
+	}
+}
+package com.utcn.demo.dto;
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class AccountDto {
+
+    private Long id;
+
+    @NotBlank(message = "Name can't be empty")
+    @Size(message = "Name can't be more 15 characters", max = 15)
+    private String name;
+
+    @NotBlank(message = "Email can't be empty")
+    @Email(message = "Invalid email")
+    private String email;
+
+    private ImageDto avatar;
+
+    private Set<Role> roles;
+
+    private List<AnswerDto> answers;
+
+    private List<QuestionDto> questions;
+
+
+
+}
+package com.utcn.demo.dto;
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+public class AccountPostDto {
+
+    @NotBlank(message = "Name can't be empty")
+    @Size(message = "Name can't be more 15 characters", max = 15)
+    private String name;
+
+    @NotBlank(message = "Email can't be empty")
+    @Email(message = "Invalid email")
+    private String email;
+
+    @NotBlank(message = "Password can't be empty")
+    @Size(message = "Password can't be less 6 characters", min = 6)
+    private String password;
+
+    @NotBlank(message = "Password confirm can't be empty")
+    private String passwordConfirm;
+
+}
+package com.utcn.demo.dto;
+@Setter
+@Getter
+@AllArgsConstructor
+@NoArgsConstructor
+public class AnswerDto extends Auditable<Account> {
+
+    private Long id;
+
+    private String content;
+
+    private AccountDto author;
+
+    private Boolean isAccepted;
+
+    private Set<AccountDto> negativeVotes;
+
+    private Set<AccountDto> positiveVotes;
+
+    private QuestionDto question;
+
+}
+package com.utcn.demo.dto;
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
+public class ImageDto {
+
+    private Long id;
+
+    private String data;
+
+}
+package com.utcn.demo.dto.mapper;
+@Mapper(componentModel = "spring")
+public interface AccountMapper {
+
+    @Mapping(target = "questions", qualifiedByName = "questionsToQuestionsDto")
+    AccountDto toAccountDto(Account account);
+
+    @Named("questionsToQuestionsDto")
+    @Mapping(target = "author", expression = "java(null)")
+    QuestionDto toQuestionDto(Question question);
+
+    @Mappings({
+            @Mapping(target = "questions", ignore = true),
+            @Mapping(target = "password", ignore = true)
+    })
+    Account toAccount(AccountDto accountDto);
+
+    @Mapping(target = "id", ignore = true)
+    Account postDtoToAccount(AccountPostDto accountPostDto);
+
+}
+package com.utcn.demo.dto.mapper;
+@Mapper(componentModel = "spring")
+public interface AnswerMapper {
+
+    @Mappings({
+            @Mapping(target = "question.answers", ignore = true),
+            @Mapping(target = "question.author", ignore = true),
+            @Mapping(target = "author.answers", ignore = true),
+            @Mapping(target = "author.questions", ignore = true),
+    })
+    AnswerDto toAnswerDto(Answer answer);
+
+    List<AnswerDto> toAnswersDto(List<Answer> answers);
+
+    List<Answer> toAnswers(List<AnswerDto> answersDto);
+
+    Answer toAnswer(AnswerDto answerDto);
+
+}
+package com.utcn.demo.dto.mapper;
+@Mapper(componentModel = "spring")
+public interface ImageMapper {
+
+    Image toImage(ImageDto imageDto);
+
+    ImageDto toImageDto(Image image);
+
+}
+package com.utcn.demo.dto.mapper;
+@Mapper(componentModel = "spring")
+public interface QuestionMapper {
+
+    Question toQuestion(QuestionDto questionDto);
+
+    @Mappings({
+        @Mapping(target = "author.questions", ignore = true),
+        @Mapping(target = "author.answers", ignore = true),
+    })
+    QuestionDto toQuestionDto(Question question);
+
+}
+package com.utcn.demo.dto;
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
+public class QuestionDto extends Auditable<Account> {
+
+    private Long id;
+
+    private String title;
+
+    private String body;
+
+
+    private Set<AccountDto> positiveVotes;
+
+    private Set<AccountDto> negativeVotes;
+
+    @NotNull(message = "Account NOT NULL")
+    private AccountDto author;
+
+    private List<AnswerDto> answers;
+
+}
+package com.utcn.demo.model;
+@Getter
+@Setter
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+@Entity
+@Table(name = "account")
+public class Account {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private Long id;
+
+    @Column(name = "name", nullable = false)
+    @NotBlank(message = "Name can't be empty")
+    @Size(message = "Name can't be more 15 characters", max = 15)
+    private String name;
+
+    @Column(name = "email", nullable = false, unique = true)
+    @Email(message = "Invalid email")
+    @NotBlank(message = "Email can't be empty")
+    private String email;
+
+    @Column(name = "password", nullable = false)
+    @NotBlank(message = "Password can't be empty")
+    private String password;
+
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "avatar_id")
+    private Image avatar;
+    private float score;
+
+    @ElementCollection(targetClass = Role.class, fetch = FetchType.EAGER)
+    @CollectionTable(name = "account_role", joinColumns = @JoinColumn(name = "account_id"),
+            uniqueConstraints = @UniqueConstraint(columnNames = {"account_id", "roles"}))
+    @Enumerated(EnumType.STRING)
+    private Set<Role> roles;
+
+    @OneToMany(mappedBy = "author", cascade = {
+            CascadeType.DETACH, CascadeType.MERGE,
+            CascadeType.PERSIST, CascadeType.REFRESH})
+    private List<Question> questions;
+
+    @OneToMany(mappedBy = "author", cascade = {
+            CascadeType.DETACH, CascadeType.MERGE,
+            CascadeType.PERSIST, CascadeType.REFRESH})
+    private List<Answer> answers;
+
+    public void addRole(Role role) {
+        if (roles == null) {
+            roles = new HashSet<>();
+        }
+        roles.add(role);
+    }
+
+    public void addScore(){
+        this.score +=2.5;
+    }
+    public void subScore(){
+        this.score -=1.5;
+    }
+    public void removeRole(Role role) {
+        roles.remove(role);
+    }
+
+}
+package com.utcn.demo.model;
+@Getter
+@Setter
+@Entity
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+@Table(name = "answer")
+public class Answer extends Auditable<Account> {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private Long id;
+
+    @Column(name = "content", columnDefinition = "text", length = 65536, nullable = false)
+    private String content;
+
+    @ManyToOne(cascade = {
+            CascadeType.DETACH, CascadeType.MERGE,
+            CascadeType.PERSIST, CascadeType.REFRESH})
+    @JoinColumn(name = "author_id")
+    private Account author;
+
+    @ManyToOne(cascade = {
+            CascadeType.DETACH, CascadeType.MERGE,
+            CascadeType.PERSIST, CascadeType.REFRESH})
+    @JoinColumn(name = "question_id")
+    private Question question;
+
+    @Column(name = "is_accepted")
+    private Boolean isAccepted = false;
+
+    @ManyToMany(cascade = {CascadeType.MERGE, CascadeType.PERSIST,
+            CascadeType.REFRESH, CascadeType.DETACH})
+    @JoinTable(
+            name = "answer_like",
+            joinColumns = @JoinColumn(name = "answer_id"),
+            inverseJoinColumns = @JoinColumn(name = "account_id")
+    )
+    private Set<Account> positiveVotes;
+
+    @ManyToMany(cascade = {CascadeType.MERGE, CascadeType.PERSIST,
+            CascadeType.REFRESH, CascadeType.DETACH})
+    @JoinTable(
+            name = "answer_dislike",
+            joinColumns = @JoinColumn(name = "answer_id"),
+            inverseJoinColumns = @JoinColumn(name = "account_id")
+    )
+    private Set<Account> negativeVotes;
+
+    public void addPositiveVote(Account author) {
+        if (positiveVotes == null) {
+            positiveVotes = new HashSet<>();
+        }
+        author.addScore();
+        positiveVotes.add(author);
+    }
+
+    public void removePositiveVote(Account author) {
+        positiveVotes.remove(author);
+    }
+
+    public void addNegativeVote(Account author) {
+        if (negativeVotes == null) {
+            negativeVotes = new HashSet<>();
+        }
+        author.subScore();
+        negativeVotes.add(author);
+    }
+
+    public void removeNegativeVote(Account author) {
+        negativeVotes.remove(author);
+    }
+
+    public Integer getRating() {
+        if (positiveVotes != null && negativeVotes != null) {
+            return positiveVotes.size() - negativeVotes.size();
+        }
+        return 0;
+    }
+
+    public String getFormattedDate(LocalDateTime timestamp, String pattern) {
+        final DateTimeFormatter formatter = DateTimeFormatter.ofPattern(pattern);
+        return timestamp.format(formatter);
+    }
+
+}
+package com.utcn.demo.model;
+import jakarta.persistence.*;
+@Entity
+@Table(name = "asker")
+public class Asker {
+
+    @Id
+    @Column(name = "cnp")
+    private String cnp;
+
+    @Column(name = "name")
+    private String name;
+
+    public Asker(){};
+
+    public Asker(String cnp, String name){
+        this.cnp = cnp;
+        this.name = name;
+    }
+
+    public String getCnp() {
+        return cnp;
+    }
+
+    public void setCnp(String cnp) {
+        this.cnp = cnp;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+}
+package com.utcn.demo.model;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import jakarta.persistence.*;
+@Setter
+@Getter
+@Entity
+@AllArgsConstructor
+@NoArgsConstructor
+@Table(name = "image")
+public class Image {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private Long id;
+
+    @Column(name = "data", columnDefinition = "TEXT", length = 65536)
+    private String data;
+
+    public Image(String data) {
+        this.data = data;
+    }
+}
+package com.utcn.demo.model;
+import lombok.*;
+import com.utcn.demo.audit.Auditable;
+import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+@Getter
+@Setter
+@Entity
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+@Table(name = "question")
+public class Question extends Auditable<Account> {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private Long id;
+
+    @Column(name = "title")
+    private String title;
+
+    @Column(name = "body", columnDefinition = "text", length = 65536, nullable = false)
+    @NotBlank(message = "Question body can't be empty")
+    private String body;
+
+    @ManyToOne(cascade = {
+            CascadeType.DETACH, CascadeType.MERGE,
+            CascadeType.PERSIST, CascadeType.REFRESH})
+    @JoinColumn(name = "author_id")
+    private Account author;
+
+    @OneToMany(mappedBy = "question", cascade = CascadeType.ALL)
+    private List<Answer> answers = new ArrayList<>();
+    @ManyToMany(cascade = {
+            CascadeType.MERGE, CascadeType.PERSIST,
+            CascadeType.REFRESH, CascadeType.DETACH})
+    @JoinTable(
+            name = "question_like",
+            joinColumns = @JoinColumn(name = "question_id"),
+            inverseJoinColumns = @JoinColumn(name = "account_id")
+    )
+    private Set<Account> positiveVotes;
+
+    @ManyToMany(cascade = {
+            CascadeType.MERGE, CascadeType.PERSIST,
+            CascadeType.REFRESH, CascadeType.DETACH})
+    @JoinTable(
+            name = "question_dislike",
+            joinColumns = @JoinColumn(name = "question_id"),
+            inverseJoinColumns = @JoinColumn(name = "account_id")
+    )
+    private Set<Account> negativeVotes;
+    public void addAnswer(Answer answer) {
+        answers.add(answer);
+    }
+
+    public void addPositiveVote(Account author) {
+        if (positiveVotes == null) {
+            positiveVotes = new HashSet<>();
+        }
+        positiveVotes.add(author);
+    }
+
+    public void removePositiveVote(Account author) {
+        positiveVotes.remove(author);
+    }
+    public void addNegativeVote(Account author) {
+        if (negativeVotes == null) {
+            negativeVotes = new HashSet<>();
+        }
+        negativeVotes.add(author);
+    }
+    public void removeNegativeVote(Account author) {
+        negativeVotes.remove(author);
+    }
+    public Integer getRating() {
+        if (positiveVotes != null && negativeVotes != null) {
+            return positiveVotes.size() - negativeVotes.size();
+        }
+        return 0;
+    }
+    public boolean hasAcceptedAnswer() {
+        return answers.stream().anyMatch(Answer::getIsAccepted);
+    }
+
+    public String getFormattedDate(LocalDateTime timestamp, String pattern) {
+        final DateTimeFormatter formatter = DateTimeFormatter.ofPattern(pattern);
+        return timestamp.format(formatter);
+    }
+}
+package com.utcn.demo.model;
+public enum Role {
+    USER, MODERATOR, ADMIN
+}
+package com.utcn.demo.repository;
+@Repository
+public interface AccountRepository extends JpaRepository<Account, Long> {
+
+    List<Account> findByName(String name);
+
+    Optional<Account> findOneByEmail(String email);
+
+    @Query(value = "select * from account a join account_role ac_roles on a.id = ac_roles.account_id where roles = ?1",
+            countQuery = "select count(*) from account_role where roles = ?1",
+            nativeQuery = true)
+    Page<Account> findAllByRole(String role, Pageable pageable);
+
+    @Query(value = "select * from account a left join (select T.id, sum(T.num) from (select a.id, count(*) as num" +
+            " from account a join question_dislike dislikes on a.id = dislikes.account_id group by a.id union all " +
+            "select a.id, count(*) as num from account a join question_like likes on a.id = likes.account_id group by" +
+            " a.id union all select a.id, count(*) as num from account a join answer_like likes on a.id = " +
+            "likes.account_id group by a.id union all select a.id, count(*) as num from account a join answer_dislike" +
+            " dislikes on a.id = dislikes.account_id group by a.id) T group by T.id) U on a.id = U.id order by U.sum" +
+            " desc nulls last",
+            countQuery = "select count(*) from account",
+            nativeQuery = true)
+    Page<Account> findAllSortByMostVotes(Pageable pageable);
+
+    @Query(value = "select * from account a left join (select U.id, sum(U.num) from (select u.id, count(*) as num " +
+            "from account u join (select * from answer where created_date <> last_modified_date) a on u.id = " +
+            "a.last_modified_by group by u.id union all select u.id, count(*) as num from account u join (select * " +
+            "from question where created_date <> last_modified_date) q on u.id = q.last_modified_by group by u.id) U" +
+            " group by U.id) T on a.id = T.id order by T.sum desc nulls last",
+    countQuery = "select count(*) from account",
+    nativeQuery = true)
+    Page<Account> findAllSortByMostEdits(Pageable pageable);
+
+}
+package com.utcn.demo.repository;
+@Repository
+public interface AskerRepository
+        extends CrudRepository<Asker, String> {
+}
+package com.utcn.demo.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import com.utcn.demo.model.Image;
+
+@Repository
+public interface ImageRepository extends JpaRepository<Image, Long> {
+}
+package com.utcn.demo.repository;
+@Repository
+public interface QuestionRepository extends JpaRepository<Question, Long>, JpaSpecificationExecutor<Question> {
+
+    Page<Question> findAll(Pageable pageable);
+
+    @Query("SELECT q FROM Question q ORDER BY q.lastModifiedDate DESC")
+    Page<Question> findAllSortByNewest(Pageable pageable);
+
+    @Query(
+        value = "SELECT * FROM question JOIN (SELECT q.id as question_id, GREATEST(q.last_modified_date, " +
+                "MAX(a.last_modified_date)) as recent_activity FROM question q LEFT JOIN answer a ON q.id" +
+                " = a.question_id GROUP BY q.id) as T ON question.id = T.question_id ORDER BY T.recent_activity DESC",
+        countQuery = "SELECT COUNT(*) FROM question",
+        nativeQuery = true
+    )
+    Page<Question> findAllSortByLastActive(Pageable pageable);
+
+    @Query("SELECT q FROM Question q ORDER BY SIZE(q.positiveVotes) - SIZE(q.negativeVotes) DESC")
+    Page<Question> findAllSortByMostVotes(Pageable pageable);
+
+}
+package com.utcn.demo.security;
+@Setter
+@Getter
+public class UserPrincipal implements UserDetails {
+
+    private Long id;
+
+    private UserDetails userDetails;
+
+    public UserPrincipal(UserDetails userDetails, Long id) {
+        this.userDetails = userDetails;
+        this.id = id;
+    }
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return userDetails.getAuthorities();
+    }
+    @Override
+    public String getPassword() {
+        return userDetails.getPassword();
+    }
+    @Override
+    public String getUsername() {
+        return userDetails.getUsername();
+    }
+    @Override
+    public boolean isAccountNonExpired() {
+        return userDetails.isAccountNonExpired();
+    }
+    @Override
+    public boolean isAccountNonLocked() {
+        return userDetails.isAccountNonLocked();
+    }
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return userDetails.isCredentialsNonExpired();
+    }
+    @Override
+    public boolean isEnabled() {
+        return userDetails.isEnabled();
+    }
+}
+package com.utcn.demo.service;
+public interface AccountService {
+
+    Optional<Account> findById(Long id);
+
+    Optional<Account> findByEmail(String email);
+
+    List<Account> findByName(String name);
+
+    List<Account> findAll();
+
+    Page<Account> findAll(Pageable pageable);
+
+    Account save(Account account);
+
+    void deleteById(Long id);
+
+}
+package com.utcn.demo.service;
+public interface AnswerService {
+
+    List<Answer> findAll();
+
+    Optional<Answer> findById(Long id);
+
+    Answer save(Answer answer);
+
+    void deleteById(Long id);
+
+}
+package com.utcn.demo.service;
+@Service
+public class AskerService {
+
+    @Autowired
+    private AskerRepository askerRepository;
+
+    public List<Asker> retrievePersons(){
+        return (List<Asker>) askerRepository.findAll();
+    }
+}
+package com.utcn.demo.service.converter;
+@Converter(autoApply = true)
+public class LocalDateTimeConverter implements AttributeConverter<LocalDateTime, Timestamp> {
+
+    @Override
+    public Timestamp convertToDatabaseColumn(LocalDateTime localDateTime) {
+        return localDateTime == null ? null : Timestamp.valueOf(localDateTime);
+    }
+
+    @Override
+    public LocalDateTime convertToEntityAttribute(Timestamp timestamp) {
+        return timestamp == null ? null : timestamp.toLocalDateTime();
+    }
+
+}
+package com.utcn.demo.service;
+public interface ImageService {
+
+    Optional<Image> findById(Long id);
+
+    Image save(Image image);
+
+    void deleteById(Long id);
+
+}
+package com.utcn.demo.service.impl.account;
+@Service
+@Slf4j
+@RequiredArgsConstructor
+public class AccountServiceImpl implements AccountService {
+
+    private final AccountRepository accountRepository;
+
+    @Autowired
+    private final BCryptPasswordEncoder passwordEncoder;
+    private final ImageService imageService;
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Account> findById(Long id) {
+        return accountRepository.findById(id);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Account> findByEmail(String email) {
+        return accountRepository.findOneByEmail(email);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Account> findByName(String name) {
+        return accountRepository.findByName(name);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Account> findAll() {
+        return accountRepository.findAll();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<Account> findAll(Pageable pageable) {
+        return accountRepository.findAll(pageable);
+    }
+
+    public Image getAvatar(int avatarSize, String userEmail) {
+        Image avatar = new Image();
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            md.update(userEmail.getBytes());
+            byte[] digest = md.digest();
+            String hash = DatatypeConverter.printHexBinary(digest).toLowerCase();
+            String avatarSource = "https://www.gravatar.com/avatar/%s?d=identicon&s=%d";
+            String avatarUrl = String.format(avatarSource, hash, avatarSize);
+
+            try(InputStream is = new URL(avatarUrl).openStream()) {
+                String avatarData = Base64.getEncoder().encodeToString(is.readAllBytes());
+                avatar.setData(avatarData);
+            } catch (MalformedURLException ex) {
+                throw new RuntimeException("There is a problem while downloading image", ex);
+            } catch (IOException ioEx) {
+                throw new RuntimeException("Problem with saving image", ioEx);
+            }
+        } catch (NoSuchAlgorithmException ex) {
+            throw new RuntimeException(ex);
+        }
+        return avatar;
+    }
+
+    @Override
+    public Account save(Account account) {
+        if (account.getId() != null) {
+            Account accountToPut = accountRepository.findById(account.getId()).orElseThrow();
+            accountToPut.setEmail(account.getEmail());
+            accountToPut.setName(account.getName());
+            accountToPut.setRoles(account.getRoles());
+            return accountRepository.save(accountToPut);
+        }
+        int avatarSize = 164;
+        Image avatar = getAvatar(avatarSize, account.getEmail());
+        account.setAvatar(avatar);
+        account.addRole(Role.USER);
+        account.setPassword(passwordEncoder.encode(account.getPassword()));
+        return accountRepository.save(account);
+    }
+
+    @Override
+    public void deleteById(Long id) {
+        try {
+            accountRepository.deleteById(id);
+        } catch (EmptyResultDataAccessException ex) {
+            log.info("Delete non existing entity with id=" + id, ex);
+        }
+    }
+}
+package com.utcn.demo.service.impl;
+@Service
+@Slf4j
+@AllArgsConstructor
+public class AnswerServiceImpl implements AnswerService {
+
+    private final AnswerRepository answerRepository;
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Answer> findAll() {
+        return answerRepository.findAll();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Answer> findById(Long id) {
+        return answerRepository.findById(id);
+    }
+
+    @Override
+    public Answer save(Answer answer) {
+        return answerRepository.save(answer);
+    }
+
+    @Override
+    public void deleteById(Long id) {
+        try {
+            answerRepository.deleteById(id);
+        } catch (EmptyResultDataAccessException ex) {
+            log.info("Delete non existing entity with id=" + id, ex);
+        }
+    }
+}
+package com.utcn.demo.service.impl;
+@Service
+@AllArgsConstructor
+public class ImageServiceImpl implements ImageService {
+
+    private final ImageRepository imageRepository;
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Image> findById(Long id) {
+        return imageRepository.findById(id);
+    }
+
+    @Override
+    public Image save(Image image) {
+        return imageRepository.save(image);
+    }
+
+    @Override
+    public void deleteById(Long id) {
+        imageRepository.deleteById(id);
+    }
+
+}
+package com.utcn.demo.service.impl.question;
+@Service
+@AllArgsConstructor
+public class IdQuestionSortService implements QuestionSortService {
+
+    private final QuestionRepository questionRepository;
+
+    @Override
+    public Page<Question> sort(Pageable pageable) {
+        return questionRepository.findAll(pageable);
+    }
+
+    @Override
+    public boolean isSuitableFor(QuestionSortType sortType) {
+        return QuestionSortType.ID.equals(sortType);
+    }
+}
+package com.utcn.demo.service.impl.question;
+@Service
+@AllArgsConstructor
+public class LastActiveQuestionSortService implements QuestionSortService {
+
+    private final QuestionRepository questionRepository;
+
+    @Override
+    public Page<Question> sort(Pageable pageable) {
+        Pageable unsortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+        return questionRepository.findAllSortByLastActive(unsortedPageable);
+    }
+
+    @Override
+    public boolean isSuitableFor(QuestionSortType sortType) {
+        return QuestionSortType.LAST_ACTIVE.equals(sortType);
+    }
+
+}
+package com.utcn.demo.service.impl.question;
+@Service
+@AllArgsConstructor
+public class MostVotesQuestionSortService implements QuestionSortService {
+
+    private final QuestionRepository questionRepository;
+
+    @Override
+    public Page<Question> sort(Pageable pageable) {
+        Pageable unsortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+        return questionRepository.findAllSortByMostVotes(unsortedPageable);
+    }
+
+    @Override
+    public boolean isSuitableFor(QuestionSortType sortType) {
+        return QuestionSortType.MOST_VOTES.equals(sortType);
+    }
+
+}
+package com.utcn.demo.service.impl.question;
+@Service
+@AllArgsConstructor
+public class NewestQuestionSortService implements QuestionSortService {
+
+    private final QuestionRepository questionRepository;
+
+    @Override
+    public Page<Question> sort(Pageable pageable) {
+        Pageable unsortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+        return questionRepository.findAllSortByNewest(unsortedPageable);
+    }
+
+    @Override
+    public boolean isSuitableFor(QuestionSortType sortType) {
+        return  QuestionSortType.NEWEST.equals(sortType);
+    }
+
+}
+package com.utcn.demo.service.impl.question;
+@Service
+@Slf4j
+@AllArgsConstructor
+public class QuestionServiceImpl implements QuestionService {
+
+    private final QuestionRepository questionRepository;
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<Question> findAll(Pageable pageable) {
+        return questionRepository.findAll(pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Question> findAll() {
+        return questionRepository.findAll();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Question> findById(Long id) {
+        return questionRepository.findById(id);
+    }
+
+    @Override
+    public Question save(Question question) {
+        return questionRepository.save(question);
+    }
+
+    @Override
+    public void deleteById(Long id) {
+        try {
+            questionRepository.deleteById(id);
+        } catch (EmptyResultDataAccessException ex) {
+            log.info("Delete non existing entity with id=" + id, ex);
+        }
+    }
+}
+package com.utcn.demo.service.impl.question;
+
+public enum QuestionSortType {
+
+    LAST_ACTIVE, NEWEST, MOST_VOTES, ID
+
+}
+package com.utcn.demo.service.impl;
+@Service
+@RequiredArgsConstructor
+public class UserDetailsServiceImpl implements UserDetailsService {
+
+    private final AccountService accountService;
+
+    @Override
+    @Transactional
+    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+        Account account = accountService.findByEmail(email).orElseThrow(() -> new AccountNotFoundException(email));
+
+        UserDetails userDetails = User.builder()
+            .username(account.getEmail())
+            .password(account.getPassword())
+            .roles(account
+                .getRoles()
+                .stream()
+                .map(Enum::toString)
+                .toArray(String[]::new))
+            .build();
+
+        return new UserPrincipal(userDetails, account.getId());
+    }
+
+}
+package com.utcn.demo.service;
+public interface QuestionService {
+
+    List<Question> findAll();
+
+    Page<Question> findAll(Pageable pageable);
+
+    Optional<Question> findById(Long id);
+
+    Question save(Question question);
+
+    void deleteById(Long id);
+
+}
+package com.utcn.demo.service;
+public interface QuestionSortService {
+
+    Page<Question> sort(Pageable pageable);
+
+    boolean isSuitableFor(QuestionSortType sortType);
+
+}

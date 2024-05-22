@@ -67,28 +67,32 @@ public class Question extends Auditable<Account> {
         answers.add(answer);
     }
 
-    public void addPositiveVote(Account author) {
+    public void addPositiveVote(Account account) {
+        if (author.equals(account)) {
+            return;
+        }
         if (positiveVotes == null) {
             positiveVotes = new HashSet<>();
         }
-        positiveVotes.add(author);
+        positiveVotes.add(account);
     }
 
     public void removePositiveVote(Account author) {
         positiveVotes.remove(author);
     }
 
-    public void addNegativeVote(Account author) {
+    public void addNegativeVote(Account account) {
+        if (author.equals(account)) {
+            return;
+        }
         if (negativeVotes == null) {
             negativeVotes = new HashSet<>();
         }
-        negativeVotes.add(author);
+        negativeVotes.add(account);
     }
-
     public void removeNegativeVote(Account author) {
         negativeVotes.remove(author);
     }
-
     public Integer getRating() {
         if (positiveVotes != null && negativeVotes != null) {
             return positiveVotes.size() - negativeVotes.size();

@@ -10,7 +10,7 @@ import com.utcn.demo.model.Question;
 
 @Repository
 public interface QuestionRepository extends JpaRepository<Question, Long>, JpaSpecificationExecutor<Question> {
-
+    @Query("SELECT q FROM Question q ORDER BY SIZE(q.positiveVotes) - SIZE(q.negativeVotes) DESC")
     Page<Question> findAll(Pageable pageable);
 
     @Query("SELECT q FROM Question q ORDER BY q.lastModifiedDate DESC")

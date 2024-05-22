@@ -58,11 +58,11 @@ public class Answer extends Auditable<Account> {
             inverseJoinColumns = @JoinColumn(name = "account_id")
     )
     private Set<Account> negativeVotes;
-
     public void addPositiveVote(Account author) {
         if (positiveVotes == null) {
             positiveVotes = new HashSet<>();
         }
+        author.addScore();
         positiveVotes.add(author);
     }
 
@@ -74,6 +74,7 @@ public class Answer extends Auditable<Account> {
         if (negativeVotes == null) {
             negativeVotes = new HashSet<>();
         }
+        author.subScore();
         negativeVotes.add(author);
     }
 
